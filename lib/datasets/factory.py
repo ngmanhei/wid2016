@@ -11,6 +11,7 @@ __sets = {}
 
 from datasets.pascal_voc import pascal_voc
 from datasets.coco import coco
+from datasets.wid2016 import wid2016
 import numpy as np
 
 # Set up voc_<year>_<split> using selective search "fast" mode
@@ -30,6 +31,13 @@ for year in ['2015']:
     for split in ['test', 'test-dev']:
         name = 'coco_{}_{}'.format(year, split)
         __sets[name] = (lambda split=split, year=year: coco(split, year))
+
+# Set up WID2016 detection data
+name = 'WID2016'
+# subset = 'train'
+# subset = 'val'
+subset = 'sample' # a small subset for code testing
+__sets[name] = (lambda sample=subset: wid2016(subset))
 
 def get_imdb(name):
     """Get an imdb (image database) by name."""
