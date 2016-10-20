@@ -1,4 +1,4 @@
-train_net: "models/wid2016/VGG16/faster_rcnn_end2end/train_wid2016.prototxt"
+train_net: "models/wid2016/VGG16/faster_rcnn_end2end/train_wid2016_9anchors.prototxt"
 base_lr: 0.001
 lr_policy: "step"
 gamma: 0.1
