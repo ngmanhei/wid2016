@@ -33,11 +33,10 @@ for year in ['2015']:
         __sets[name] = (lambda split=split, year=year: coco(split, year))
 
 # Set up WID2016 detection data
-name = 'WID2016'
-# subset = 'train'
-# subset = 'val'
-subset = 'sample' # a small subset for code testing
-__sets[name] = (lambda sample=subset: wid2016(subset))
+for year in ['2016']:
+    for split in ['train', 'val', 'test', 'sample']:
+        name = 'wid_{}_{}'.format(year, split)
+        __sets[name] = (lambda split=split, year=year: wid2016(split, year))
 
 def get_imdb(name):
     """Get an imdb (image database) by name."""

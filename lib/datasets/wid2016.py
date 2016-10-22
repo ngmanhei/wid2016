@@ -19,13 +19,14 @@ from wid2016_eval import wid2016_eval
 from fast_rcnn.config import cfg
 
 class wid2016(imdb):
-    def __init__(self, image_set):
+    def __init__(self, image_set, year, devkit_path=None):
         # initialize imdb first
-        imdb.__init__(self, 'WID2016') # only give it a name of dataset is fine
-        self._year = 'no_year'
+        imdb.__init__(self, 'wid_' + year + '_' + image_set) # only give it a name of dataset is fine
+        self._year = year
         # self._label_type = label_type
         self._image_set = image_set
-        self._devkit_path = self._get_default_path()
+        self._devkit_path = self._get_default_path() if devkit_path is None \
+                            else devkit_path
         print self._devkit_path
         self._data_path = self._devkit_path
         self._classes = self._get_label_class()
@@ -126,7 +127,7 @@ class wid2016(imdb):
             print '{} ss roidb loaded from {}'.format(self.name, cache_file)
             return roidb
 
-        if int(self._year) == 2007 or self._image_set != 'test':
+        if int(self._year) == 2016 or self._image_set != 'test':
             gt_roidb = self.gt_roidb()
             ss_roidb = self._load_selective_search_roidb(gt_roidb)
             roidb = imdb.merge_roidbs(gt_roidb, ss_roidb)
@@ -139,7 +140,7 @@ class wid2016(imdb):
         return roidb
 
     def rpn_roidb(self):
-        if int(self._year) == 2007 or self._image_set != 'test':
+        if int(self._year) == 2016 or self._image_set != 'test':
             gt_roidb = self.gt_roidb()
             rpn_roidb = self._load_rpn_roidb(gt_roidb)
             roidb = imdb.merge_roidbs(gt_roidb, rpn_roidb)
@@ -190,14 +191,21 @@ class wid2016(imdb):
         # read all boxes first
         boxes = np.zeros((num_objs, 4), dtype=np.int16)
         gt_classes = np.zeros(num_objs, dtype=np.int32)
+        seg_areas = np.zeros((num_objs), dtype=np.float32)
 
         with open(filename, 'r') as f:
             for ix in xrange(num_objs):
                 line = f.readline().strip()
                 annotations = line.split('\t') # [label xmin ymin xmax ymax]
                 gt_classes[ix] = annotations[0]
-                for i in xrange(4):
-                    boxes[ix, i] = float(annotations[i + 1]) - 1
+                x1 = float(annotations[1]) - 1
+                y1 = float(annotations[2]) - 1
+                x2 = float(annotations[3]) - 1
+                y2 = float(annotations[4]) - 1
+                # for i in xrange(4):
+                #     boxes[ix, i] = float(annotations[i + 1]) - 1
+                boxes[ix, :] = [x1, y1, x2, y2]
+                seg_areas[ix] = (x2 - x1 + 1) * (y2 - y1 + 1)
 
         overlaps = np.zeros((num_objs, self.num_classes), dtype=np.float32)
 
@@ -210,7 +218,7 @@ class wid2016(imdb):
                 'gt_classes': gt_classes,
                 'gt_overlaps' : overlaps,
                 'flipped' : False,
-                }
+                'seg_areas' : seg_areas}
 
     def _get_comp_id(self):
         comp_id = (self._comp_id + '_' + self._salt if self.config['use_salt']
@@ -220,6 +228,16 @@ class wid2016(imdb):
     def _get_wid2016_results_file_template(self):
         # VOCdevkit/results/VOC2007/Main/<comp_id>_det_test_aeroplane.txt
         filename = self._get_comp_id() + '_det_' + self._image_set + '_{:s}.txt'
+        path = os.path.join(
+            self._devkit_path,
+            'results',
+            'Main',
+            filename)
+        return path
+
+    def _get_wid2016_submission_file_template(self):
+        # VOCdevkit/results/VOC2007/Main/<comp_id>_det_test_aeroplane.txt
+        filename = 'det_' + self._image_set + '_submit_{:s}.txt'
         path = os.path.join(
             self._devkit_path,
             'results',
@@ -241,11 +259,32 @@ class wid2016(imdb):
                         continue
                     # the VOCdevkit expects 1-based indices
                     for k in xrange(dets.shape[0]):
-                        if dets[k, -1] > 0.7: # strong hard condition
+                        if dets[k, -1] > 0.5: # strong hard condition
                             f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
                                     format(index, dets[k, -1],
                                            dets[k, 0] + 1, dets[k, 1] + 1,
                                            dets[k, 2] + 1, dets[k, 3] + 1))
+
+    def _write_wid2016_submission_file(self, all_boxes):
+        for cls_ind, cls in enumerate(self.classes):
+            if cls == '__background__':
+                continue
+            print 'Writing {} WID2016 results file'.format(cls)
+            filename = self._get_wid2016_submission_file_template().format(cls)
+            print 'filename:', filename
+            with open(filename, 'wt') as f:
+                for im_ind, index in enumerate(self.image_index):
+                    dets = all_boxes[cls_ind][im_ind]
+                    if dets == []:
+                        continue
+                    # the VOCdevkit expects 1-based indices
+                    for k in xrange(dets.shape[0]):
+                        if dets[k, -1] > 0.5: 
+                            f.write('{:d} {:.1f} {:.1f} {:.1f} {:.1f} {:.3f}\n'.
+                                    format(int(index),
+                                           dets[k, 0] + 1, dets[k, 1] + 1,
+                                           dets[k, 2] + 1, dets[k, 3] + 1,
+                                           dets[k, -1]))
 
     def _do_python_eval(self, output_dir = 'output'):
         annopath = os.path.join(
@@ -304,16 +343,20 @@ class wid2016(imdb):
         status = subprocess.call(cmd, shell=True)
 
     def evaluate_detections(self, all_boxes, output_dir):
-        self._write_wid2016_results_file(all_boxes)
-        self._do_python_eval(output_dir)
-        if self.config['matlab_eval']:
-            self._do_matlab_eval(output_dir)
-        if self.config['cleanup']:
-            for cls in self._classes:
-                if cls == '__background__':
-                    continue
-                filename = self._get_wid2016_results_file_template().format(cls)
-                os.remove(filename)
+        if self._image_set != 'test':
+            self._write_wid2016_results_file(all_boxes)
+            self._do_python_eval(output_dir)
+            if self.config['matlab_eval']:
+                self._do_matlab_eval(output_dir)
+            if self.config['cleanup']:
+                for cls in self._classes:
+                    if cls == '__background__':
+                        continue
+                    filename = self._get_wid2016_results_file_template().format(cls)
+                    os.remove(filename)
+        else:
+            self._write_wid2016_submission_file(all_boxes)
+            print 'detection results of testset has been written.'
 
     def competition_mode(self, on):
         if on:

@@ -1,10 +1,10 @@
-train_net: "models/ZF/fast_rcnn/train.prototxt"
+train_net: "models/wid2016/ZF/fast_rcnn/train.prototxt"
 
 base_lr: 0.001
 lr_policy: "step"
 gamma: 0.1
-stepsize: 30000
-display: 20
+stepsize: 100
+display: 10
 average_loss: 100
 momentum: 0.9
 weight_decay: 0.0005
